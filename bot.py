@@ -5,8 +5,10 @@ import io
 import os
 import asyncio
 import urllib.parse
+import json
 from concurrent.futures import ThreadPoolExecutor
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
+from telegram.error import Forbidden
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # Configuration
@@ -18,6 +20,9 @@ INVIDIOUS_API_URL = "https://ashlynn-repo.vercel.app/search?q={}"
 # New API: https://socialdown.itz-ashlynn.workers.dev/yt?url=...&format=mp3
 DOWNLOAD_API_URL = "https://socialdown.itz-ashlynn.workers.dev/yt?url={}&format=mp3"
 
+ADMIN_ID = 7251749429
+USERS_FILE = "users.json"
+
 # Setup logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -27,6 +32,28 @@ logger = logging.getLogger(__name__)
 
 # Executor for blocking I/O
 thread_pool = ThreadPoolExecutor(max_workers=4)
+
+# User Persistence Logic
+def load_users():
+    if not os.path.exists(USERS_FILE):
+        return set()
+    try:
+        with open(USERS_FILE, 'r') as f:
+            data = json.load(f)
+            return set(data.get("users", []))
+    except Exception as e:
+        logger.error(f"Error loading users: {e}")
+        return set()
+
+def save_user(user_id):
+    users = load_users()
+    if user_id not in users:
+        users.add(user_id)
+        try:
+            with open(USERS_FILE, 'w') as f:
+                json.dump({"users": list(users)}, f)
+        except Exception as e:
+            logger.error(f"Error saving user: {e}")
 
 async def run_blocking(func, *args, **kwargs):
     """Helper to run blocking functions in a thread pool."""
@@ -48,10 +75,63 @@ def blocking_download_file(url):
     return requests.get(url)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    save_user(user_id)
+
     await update.message.reply_text(
         "Welcome to the Music Bot! 🎵\n\n"
         "Use /song <query> to search for a song.\n"
         "Example: /song arijit singh"
+    )
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return # Ignore non-admins
+
+    users = load_users()
+    await update.message.reply_text(f"📊 Bot Statistics:\n\nTotal Users: {len(users)}")
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id != ADMIN_ID:
+        return
+
+    if not context.args and not update.message.reply_to_message:
+        await update.message.reply_text("Usage:\n/broadcast <message>\nOr reply to a message with /broadcast")
+        return
+
+    # Determine message to send
+    message_text = " ".join(context.args) if context.args else None
+    reply_msg = update.message.reply_to_message
+
+    users = load_users()
+    sent_count = 0
+    failed_count = 0
+
+    status_msg = await update.message.reply_text(f"📢 Broadcasting to {len(users)} users...")
+
+    for uid in users:
+        try:
+            if reply_msg:
+                await context.bot.copy_message(chat_id=uid, from_chat_id=reply_msg.chat_id, message_id=reply_msg.message_id)
+            else:
+                await context.bot.send_message(chat_id=uid, text=message_text)
+            sent_count += 1
+        except Forbidden:
+            # User blocked the bot
+            failed_count += 1
+        except Exception as e:
+            logger.error(f"Failed to send to {uid}: {e}")
+            failed_count += 1
+
+        # Avoid flood limits
+        await asyncio.sleep(0.05)
+
+    await context.bot.edit_message_text(
+        chat_id=update.effective_chat.id,
+        message_id=status_msg.message_id,
+        text=f"✅ Broadcast Complete.\n\nSent: {sent_count}\nFailed: {failed_count}"
     )
 
 async def search_song(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -202,6 +282,8 @@ def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("broadcast", broadcast))
     application.add_handler(CommandHandler("song", search_song))
     application.add_handler(CallbackQueryHandler(button_click))
 
