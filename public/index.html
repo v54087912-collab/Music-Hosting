@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YT SEO Analyzer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>🔥 YouTube SEO Analyzer</h1>
+        <p>Boost your YouTube Growth with AI-Powered Tools</p>
+    </header>
+
+    <div class="container">
+        <aside class="sidebar">
+            <nav>
+                <ul>
+                    <li onclick="showSection('title-analyzer')">Title Analyzer</li>
+                    <li onclick="showSection('tags-extractor')">Tags Extractor</li>
+                    <li onclick="showSection('keyword-difficulty')">Keyword Difficulty</li>
+                    <li onclick="showSection('thumbnail-scanner')">Thumbnail Scanner</li>
+                    <li onclick="showSection('description-score')">Description Score</li>
+                    <li onclick="showSection('hashtag-optimizer')">Hashtag Optimizer</li>
+                    <li onclick="showSection('competitor-analysis')">Competitor Analysis</li>
+                    <li onclick="showSection('seo-score')">Real-Time SEO Score</li>
+                    <li onclick="showSection('video-health')">Video Health Checker</li>
+                    <li onclick="showSection('ab-test')">A/B Title Testing</li>
+                    <li onclick="showSection('keyword-gap')">Keyword Gap Finder</li>
+                    <li onclick="showSection('auto-generate')">Auto-Generate SEO</li>
+                    <li onclick="showSection('trending')">Trending Opportunities</li>
+                    <li onclick="showSection('category-check')">Category Accuracy</li>
+                    <li onclick="showSection('rpm-estimator')">RPM/CPM Estimator</li>
+                    <li onclick="showSection('algo-prediction')">Algorithm Prediction</li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="content" id="main-content">
+            <div id="intro" class="section active">
+                <h2>Welcome to YT SEO Analyzer</h2>
+                <p>Select a tool from the sidebar to get started.</p>
+            </div>
+
+            <!-- Sections will be dynamically generated or toggled here -->
+            <div id="output-area">
+                <h3>Analysis Result:</h3>
+                <pre id="result-output">Waiting for input...</pre>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
