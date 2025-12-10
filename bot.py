@@ -4,6 +4,7 @@ import re
 import io
 import os
 import asyncio
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -14,7 +15,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 DEFAULT_TOKEN = "8227611754:AAHQb4WwVJSgVKviRerm28x8q9RqiBktEWY"
 BOT_TOKEN = os.getenv("BOT_TOKEN", DEFAULT_TOKEN)
 INVIDIOUS_API_URL = "https://ashlynn-repo.vercel.app/search?q={}"
-Y2MATE_API_URL = "https://y2mate.guru/api/convert?url=https://youtube.com/watch?v={}"
+# New API: https://socialdown.itz-ashlynn.workers.dev/yt?url=...&format=mp3
+DOWNLOAD_API_URL = "https://socialdown.itz-ashlynn.workers.dev/yt?url={}&format=mp3"
 
 # Setup logging
 logging.basicConfig(
@@ -32,13 +34,15 @@ async def run_blocking(func, *args, **kwargs):
     return await loop.run_in_executor(thread_pool, lambda: func(*args, **kwargs))
 
 def blocking_search(query):
-    return requests.get(INVIDIOUS_API_URL.format(query))
+    # Encode the query parameter to handle special characters
+    return requests.get(INVIDIOUS_API_URL.format(urllib.parse.quote(query)))
 
 def blocking_get_download_link(api_url):
     headers = {
          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
-    return requests.get(api_url, headers=headers, timeout=15)
+    # Increased timeout as this worker might take longer
+    return requests.get(api_url, headers=headers, timeout=30)
 
 def blocking_download_file(url):
     return requests.get(url)
@@ -66,8 +70,17 @@ async def search_song(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Error searching for songs. API returned error.")
             return
 
-        results = response.json()
-        if not results or not isinstance(results, list):
+        data = response.json()
+
+        # Handle if API returns a dict with 'results' key or just a list
+        if isinstance(data, dict):
+            results = data.get('results', [])
+        elif isinstance(data, list):
+            results = data
+        else:
+            results = []
+
+        if not results:
             await update.message.reply_text("❌ No results found.")
             return
 
@@ -118,7 +131,11 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(text=f"🔄 Fetching download link for Video ID: {video_id}...")
 
-    api_url = Y2MATE_API_URL.format(video_id)
+    # Construct the YouTube URL and encode it
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+    encoded_url = urllib.parse.quote(video_url)
+    api_url = DOWNLOAD_API_URL.format(encoded_url)
+
     try:
         # Run blocking request in thread pool
         response = await run_blocking(blocking_get_download_link, api_url)
@@ -126,17 +143,36 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             data = response.json()
         except ValueError:
-            logger.error(f"y2mate API returned non-JSON: {response.text[:200]}")
+            logger.error(f"Download API returned non-JSON: {response.text[:200]}")
             await query.edit_message_text(text="❌ Error: The download API is currently unavailable (returned invalid data).")
             return
 
-        download_url = data.get('download_url')
+        # New API structure:
+        # {
+        #   "success": true,
+        #   "data": [
+        #     {
+        #       "title": "...",
+        #       "downloadUrl": "...",
+        #       "fileSize": "..."
+        #     }
+        #   ]
+        # }
+
+        if not data.get('success') or not data.get('data'):
+             await query.edit_message_text(text="❌ Could not find download URL in response.")
+             return
+
+        # Take the first item in data list
+        item = data['data'][0]
+        download_url = item.get('downloadUrl')
+
         if not download_url:
             await query.edit_message_text(text="❌ Could not find download URL in response.")
             return
 
-        title = data.get('title', 'Unknown Song')
-        size = data.get('size', 'Unknown Size')
+        title = item.get('title', 'Unknown Song')
+        size = item.get('fileSize', 'Unknown Size')
 
         await query.edit_message_text(text=f"⬇️ Downloading {title} ({size})...")
 
