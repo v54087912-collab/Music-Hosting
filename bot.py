@@ -28,6 +28,9 @@ DOWNLOAD_API_URL = "https://socialdown.itz-ashlynn.workers.dev/yt?url={}&format=
 ADMIN_ID = 7251749429
 USERS_FILE = "users.json"
 
+# Global cache for search results: {user_id: [results]}
+SEARCH_CACHE = {}
+
 # Setup logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -145,6 +148,68 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text=f"✅ Broadcast Complete.\n\nSent: {sent_count}\nFailed: {failed_count}"
     )
 
+async def send_results_page(update, context, results, offset):
+    """Helper to send a page of results."""
+    page_size = 5
+    end_index = offset + page_size
+    current_batch = results[offset:end_index]
+
+    if not current_batch:
+        await update.message.reply_text("❌ No more results.")
+        return
+
+    # If this is called from a callback (Next button), the 'update' might not support reply_text directly if it's a query
+    # So we use context.bot.send_message or handle it carefully.
+    # Actually, update.message works for both command and if we pass the message object.
+    # But for callback queries, update.message is the message with the button. We probably want to send NEW messages.
+
+    chat_id = update.effective_chat.id
+
+    for result in current_batch:
+        title = result.get('title', 'Unknown Title')
+        thumbnail = result.get('thumbnail')
+
+        # Try to get videoId directly, fallback to URL parsing
+        video_id = result.get('videoId')
+        if not video_id:
+            url = result.get('url', '')
+            video_id_match = re.search(r'v=([^&]+)', url)
+            if video_id_match:
+                video_id = video_id_match.group(1)
+
+        if not video_id:
+            continue
+
+        button = [[InlineKeyboardButton("⬇️ Download", callback_data=f"vid:{video_id}")]]
+        reply_markup = InlineKeyboardMarkup(button)
+
+        try:
+            if thumbnail:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=thumbnail,
+                    caption=f"🎵 {title}",
+                    reply_markup=reply_markup
+                )
+            else:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"🎵 {title}",
+                    reply_markup=reply_markup
+                )
+        except Exception as msg_err:
+            logger.error(f"Failed to send result message: {msg_err}")
+            continue
+
+    # Check if there are more results
+    if len(results) > end_index:
+        next_button = [[InlineKeyboardButton("Next ➡️", callback_data=f"next:{end_index}")]]
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"Page {int(offset/page_size) + 1}",
+            reply_markup=InlineKeyboardMarkup(next_button)
+        )
+
 async def search_song(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Please provide a song name. Example: /song despacito")
@@ -175,50 +240,12 @@ async def search_song(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ No results found.")
             return
 
-        # Choose top 5 results
-        top_results = results[:5]
+        # Cache results for this user
+        user_id = update.effective_user.id
+        SEARCH_CACHE[user_id] = results
 
-        if not top_results:
-             await update.message.reply_text("❌ No valid results found.")
-             return
-
-        await update.message.reply_text(f"🔍 Found {len(top_results)} results:")
-
-        for result in top_results:
-            title = result.get('title', 'Unknown Title')
-            thumbnail = result.get('thumbnail')
-
-            # Try to get videoId directly, fallback to URL parsing
-            video_id = result.get('videoId')
-            if not video_id:
-                url = result.get('url', '')
-                video_id_match = re.search(r'v=([^&]+)', url)
-                if video_id_match:
-                    video_id = video_id_match.group(1)
-
-            if not video_id:
-                continue
-
-            # Create button for this specific result
-            button = [[InlineKeyboardButton("⬇️ Download", callback_data=f"vid:{video_id}")]]
-            reply_markup = InlineKeyboardMarkup(button)
-
-            try:
-                if thumbnail:
-                    await update.message.reply_photo(
-                        photo=thumbnail,
-                        caption=f"🎵 {title}",
-                        reply_markup=reply_markup
-                    )
-                else:
-                    await update.message.reply_text(
-                        text=f"🎵 {title}",
-                        reply_markup=reply_markup
-                    )
-            except Exception as msg_err:
-                logger.error(f"Failed to send result message: {msg_err}")
-                # Continue to next result even if one fails
-                continue
+        # Send first page
+        await send_results_page(update, context, results, 0)
 
     except Exception as e:
         logger.error(f"Error in search_song: {e}")
@@ -239,6 +266,34 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     data = query.data
+    user_id = update.effective_user.id
+
+    # Handle Next Page
+    if data.startswith("next:"):
+        try:
+            offset = int(data.split(":")[1])
+            results = SEARCH_CACHE.get(user_id)
+
+            # Delete the "Next" button message to clean up UI
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+
+            if not results:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="❌ Search expired. Please search again."
+                )
+                return
+
+            await send_results_page(update, context, results, offset)
+            return
+        except Exception as e:
+            logger.error(f"Error in next page: {e}")
+            return
+
+    # Handle Download
     if not data.startswith("vid:"):
         return
 
@@ -261,18 +316,6 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Download API returned non-JSON: {response.text[:200]}")
             await edit_message(query, "❌ Error: The download API is currently unavailable (returned invalid data).")
             return
-
-        # New API structure:
-        # {
-        #   "success": true,
-        #   "data": [
-        #     {
-        #       "title": "...",
-        #       "downloadUrl": "...",
-        #       "fileSize": "..."
-        #     }
-        #   ]
-        # }
 
         if not data.get('success') or not data.get('data'):
              await edit_message(query, "❌ Could not find download URL in response.")
