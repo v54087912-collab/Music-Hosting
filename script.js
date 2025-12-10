@@ -1,3 +1,10 @@
+
+// Configuration
+const API_KEY = "cd08d6f9800a6ed26cb21a10590cbe07";
+const MODEL_ID = "Qwen/Qwen3-4B-Instruct-2507";
+const API_URL = `https://api.bytez.com/models/v2/${MODEL_ID}`;
+
+// UI Function to switch sections
 function showSection(sectionId) {
     const mainContent = document.getElementById('main-content');
     // Clear previous dynamic content but keep the output area
@@ -166,115 +173,176 @@ function showSection(sectionId) {
     document.getElementById('result-output').textContent = 'Waiting for input...';
 }
 
-async function callApi(endpoint, data) {
-    const output = document.getElementById('result-output');
-    output.textContent = 'Analyzing... please wait...';
+// AI Function
+async function generateAIResponse(prompt) {
+    const outputElem = document.getElementById('result-output');
+    outputElem.textContent = 'Analyzing... please wait...';
 
     try {
-        const response = await fetch(endpoint, {
+        const response = await fetch(API_URL, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            headers: {
+                'Authorization': `Key ${API_KEY}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                input: [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+            })
         });
-        const result = await response.json();
 
-        // Handle if result is an object or string
-        let display = result.result;
-        if (typeof display === 'object') {
-            display = JSON.stringify(display, null, 2);
+        if (!response.ok) {
+            const errJson = await response.json();
+            throw new Error(errJson.error || response.statusText);
         }
-        output.textContent = display;
+
+        const data = await response.json();
+        const aiOutput = data.output;
+
+        // Try to parse if it's JSON inside string, otherwise show string
+        try {
+           const parsed = JSON.parse(aiOutput);
+           outputElem.textContent = JSON.stringify(parsed, null, 2);
+        } catch (e) {
+           outputElem.textContent = aiOutput;
+        }
+
     } catch (error) {
-        output.textContent = 'Error: ' + error.message;
+        console.error("AI API Error:", error);
+        outputElem.textContent = 'Error: ' + error.message;
     }
 }
 
-// Feature Functions
+// Feature Functions (Calling AI directly)
 function analyzeTitle() {
     const title = document.getElementById('titleInput').value;
-    callApi('/api/analyze-title', { title });
+    const prompt = `Analyze this YouTube video title: "${title}".
+    Check length, keywords, CTR score, and clickbait score.
+    Provide suggestions to boost CTR by 15%.
+    Format the response as JSON with keys: "analysis", "suggestions".`;
+    generateAIResponse(prompt);
 }
 
 function extractTags() {
     const input = document.getElementById('tagsInput').value;
-    callApi('/api/extract-tags', { input });
+    const prompt = `Generate a list of optimized YouTube tags for this topic or video description: "${input}".
+    For each tag, estimate competition level (Low/Med/High) and SEO relevance score.
+    Format as JSON.`;
+    generateAIResponse(prompt);
 }
 
 function checkKeywordDifficulty() {
     const keyword = document.getElementById('keywordInput').value;
-    callApi('/api/keyword-difficulty', { keyword });
+    const prompt = `Analyze this YouTube keyword: "${keyword}".
+    Estimate competition (Low/Medium/High), estimated monthly search volume, and a Trending Score.
+    Format as JSON.`;
+    generateAIResponse(prompt);
 }
 
 function scanThumbnail() {
     const description = document.getElementById('thumbInput').value;
-    callApi('/api/thumbnail-scan', { description });
+    const prompt = `I have a YouTube thumbnail that looks like this: "${description}".
+    Analyze it for CTR, color usage, text readability, and emotional trigger.
+    Give specific improvement suggestions.`;
+    generateAIResponse(prompt);
 }
 
 function scoreDescription() {
     const description = document.getElementById('descInput').value;
-    callApi('/api/description-score', { description });
+    const prompt = `Analyze this YouTube video description: "${description}".
+    Check keyword placement, timestamp usage, and links.
+    Give a score from 0-100 and improvement tips.`;
+    generateAIResponse(prompt);
 }
 
 function optimizeHashtags() {
     const topic = document.getElementById('hashInput').value;
-    callApi('/api/hashtag-optimizer', { topic });
+    const prompt = `Generate 15 best-performing YouTube hashtags for the topic: "${topic}".`;
+    generateAIResponse(prompt);
 }
 
 function analyzeCompetitor() {
     const videoDetails = document.getElementById('compInput').value;
-    callApi('/api/competitor-analysis', { videoDetails });
+    const prompt = `Analyze this competitor video data: "${videoDetails}".
+    Provide insights on Views vs Subscribers ratio, Growth, Keywords, Tags, and Engagement.`;
+    generateAIResponse(prompt);
 }
 
 function getSeoScore() {
     const title = document.getElementById('seoTitle').value;
     const description = document.getElementById('seoDesc').value;
     const tags = document.getElementById('seoTags').value;
-    callApi('/api/seo-score', { title, description, tags });
+    const prompt = `Calculate a comprehensive SEO score (0-100) for a YouTube video with:
+    Title: "${title}"
+    Description: "${description}"
+    Tags: "${tags}"
+    Explain the score based on engagement potential, retention signals, and CTR factors.`;
+    generateAIResponse(prompt);
 }
 
 function checkHealth() {
     const stats = document.getElementById('healthInput').value;
-    callApi('/api/video-health', { stats });
+    const prompt = `Analyze these YouTube video stats: "${stats}".
+    Provide a health check report covering CTR, retention, and velocity. Suggest SEO improvements.`;
+    generateAIResponse(prompt);
 }
 
 function runAbTest() {
     const title1 = document.getElementById('titleA').value;
     const title2 = document.getElementById('titleB').value;
-    callApi('/api/ab-test', { title1, title2 });
+    const prompt = `Compare these two YouTube titles:
+    1. "${title1}"
+    2. "${title2}"
+    Predict which one will perform better and why.`;
+    generateAIResponse(prompt);
 }
 
 function findGap() {
     const myKeywords = document.getElementById('myKeywords').value;
     const competitorKeywords = document.getElementById('compKeywords').value;
-    callApi('/api/keyword-gap', { myKeywords, competitorKeywords });
+    const prompt = `Compare my keywords: "${myKeywords}" with competitor keywords: "${competitorKeywords}".
+    Identify missing keywords and gaps.`;
+    generateAIResponse(prompt);
 }
 
 function autoGenerate() {
     const niche = document.getElementById('autoNiche').value;
     const topic = document.getElementById('autoTopic').value;
-    callApi('/api/auto-generate', { niche, topic });
+    const prompt = `Generate a smart SEO Title, Description, and Tags for a YouTube video about "${topic}" in the niche "${niche}".`;
+    generateAIResponse(prompt);
 }
 
 function findTrending() {
     const niche = document.getElementById('trendNiche').value;
-    callApi('/api/trending', { niche });
+    const prompt = `Identify upcoming "search blow-up" topics and trending opportunities in the "${niche}" niche on YouTube.`;
+    generateAIResponse(prompt);
 }
 
 function checkCategory() {
     const contentSummary = document.getElementById('catContent').value;
     const category = document.getElementById('catSelected').value;
-    callApi('/api/category-check', { contentSummary, category });
+    const prompt = `I have a video about: "${contentSummary}".
+    I selected the category: "${category}".
+    Is this the correct category? If not, what should it be? explain potential SEO impact.`;
+    generateAIResponse(prompt);
 }
 
 function estimateRpm() {
     const audienceCountry = document.getElementById('rpmCountry').value;
     const contentType = document.getElementById('rpmType').value;
-    callApi('/api/rpm-estimator', { audienceCountry, contentType });
+    const prompt = `Estimate the YouTube RPM and CPM for a channel targeting "${audienceCountry}" with content type "${contentType}".`;
+    generateAIResponse(prompt);
 }
 
 function predictAlgo() {
     const videoDetails = document.getElementById('algoInput').value;
-    callApi('/api/algo-prediction', { videoDetails });
+    const prompt = `Predict the ranking potential for this video: "${videoDetails}".
+    Estimate chances for Suggested Feed placement and Search ranking.`;
+    generateAIResponse(prompt);
 }
 
 // Initial load

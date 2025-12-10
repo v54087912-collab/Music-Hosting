@@ -1,8 +1,11 @@
 {
+  "name": "youtube-seo-analyzer",
+  "version": "1.0.0",
+  "description": "YouTube SEO Analyzer Website",
+  "scripts": {
+    "deploy": "surge . --domain youtube-seo-analyzer.surge.sh"
+  },
   "dependencies": {
-    "body-parser": "^2.2.1",
-    "bytez.js": "^3.0.0",
-    "cors": "^2.8.5",
-    "express": "^5.2.1"
+    "surge": "^0.24.6"
   }
 }
