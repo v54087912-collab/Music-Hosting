@@ -19,7 +19,7 @@ if not BOT_TOKEN:
     # The prompt explicitly gave the token, so I will keep it as a fallback
     # but strictly from env in "real" code. For this sandbox, I'll set it here
     # but ensure it's not hardcoded in a way that suggests it's best practice.
-    BOT_TOKEN = "8227611754:AAHQb4WwVJSgVKviRerm28x8q9RqiBktEWY"
+    BOT_TOKEN = "8574951294:AAGagL3UIlyAPJu9yuJLk_7rJs5XqGXC4dk"
 
 INVIDIOUS_API_URL = "https://ashlynn-repo.vercel.app/search?q={}"
 # New API: https://socialdown.itz-ashlynn.workers.dev/yt?url=...&format=mp3
